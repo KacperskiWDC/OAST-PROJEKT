@@ -1,0 +1,11 @@
+{
+    "alg_params": {
+        "population":   100,
+        "N":            20,    
+        "pc":           0.1,
+        "pm":           0.1,
+        "seed":         13,
+        "epochs_num":   1000
+    },
+    "problem_type": "DDAP"
+}
