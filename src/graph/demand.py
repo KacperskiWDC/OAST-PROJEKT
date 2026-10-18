@@ -8,13 +8,13 @@ class Demand:
         src:       int, 
         dst:       int, 
         volume:    int, 
-        max_paths: int
+        maxPaths: int
     ) -> None:
         self.id        = demand_id+1
         self.src       = src
         self.dst       = dst
         self.volume    = volume
-        self.max_paths = max_paths
+        self.maxPaths  = maxPaths
 
 def _importDemands(
     content: str

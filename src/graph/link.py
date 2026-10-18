@@ -14,8 +14,6 @@ class Links:
                 data[1], data[2], data[3]
             )
 
-        print(self._connections)
-
     def getLink(
         self
     ) -> Dict:
