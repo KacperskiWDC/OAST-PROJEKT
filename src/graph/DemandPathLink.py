@@ -13,8 +13,21 @@ class DemandPath:
         links:      List
     ) -> None:
         self.demand_id = demand_id
-        self.path_id = path_id
-        self.links = links
+        self.path_id   = path_id
+        self.links     = links
+
+    def __repr__(
+        self
+    ) -> str:
+        print(
+            f'''
+                demand_id = {self.demand_id}
+                path_id   = {self.path_id}
+                links     = {self.links}
+            '''
+        )
+        return ""
+        pass
 
 
 def loadDemandPaths(

@@ -1,5 +1,7 @@
 from    typing import List, Dict
 
+from    .utils import importData
+
 class Links:
 
     def __init__(
@@ -32,12 +34,7 @@ def openLinkParams(
     path: str=""
 ) -> Links | None:
 
-    data = ""
-    try:
-        with open(path, mode="r", encoding="utf-8") as f:
-            data = f.read()
-    except FileNotFoundError | FileExistsError:
-        pass
+    data = importData(path=path)
 
     if data == "":
         return

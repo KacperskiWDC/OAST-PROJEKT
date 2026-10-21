@@ -1,5 +1,7 @@
 from    typing import List, Dict
 
+from    .utils import importData
+
 class Demand:
 
     def __init__(
@@ -10,11 +12,25 @@ class Demand:
         volume:    int, 
         maxPaths: int
     ) -> None:
-        self.id        = demand_id+1
+        self.id        = demand_id
         self.src       = src
         self.dst       = dst
         self.volume    = volume
         self.maxPaths  = maxPaths
+
+    def __repr__(
+        self
+    ) -> str:
+        print(
+            f'''
+            demand   = {self.id}
+            src      = {self.src}
+            dst      = {self.dst}
+            volume   = {self.volume}
+            maxPaths = {self.maxPaths}            
+            '''
+        )
+        return ""
 
 def _importDemands(
     content: str
@@ -39,12 +55,7 @@ def openLinkDemands(
     path: str=""
 ) -> Dict[int, Demand] | None:
 
-    data = ""
-    try:
-        with open(path, mode="r", encoding="utf-8") as f:
-            data = f.read()
-    except FileNotFoundError | FileExistsError:
-        pass
+    data = importData(path=path)
 
     if data == "":
         return

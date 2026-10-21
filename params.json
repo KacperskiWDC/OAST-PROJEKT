@@ -1,9 +1,9 @@
 {
     "alg_params": {
         "population":   100,
-        "N":            20,    
-        "pc":           0.1,
-        "pm":           0.1,
+        "N":            50,    
+        "pc":           0.0,
+        "pm":           1.0,
         "seed":         13,
         "epochs_num":   1000
     },
