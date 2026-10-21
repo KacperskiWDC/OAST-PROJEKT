@@ -34,9 +34,7 @@ def loadDemandPaths(
 ) -> Dict:
     demand_paths = {}
 
-    pattern = re.compile(
-        r"set\s+DemandPath_links\[(\d+),(\d+)\]\s*:=\s*([\d\s]+);"
-    )
+    pattern = re.compile(r"set\s+Demand(?:Path_links|_pathLinks)\[(\d+),(\d+)\]\s*:=\s*([\d\s]+);")
 
     with open(path, "r") as file:
         for line in file:

@@ -74,7 +74,7 @@ def importAlgParams(
 
     try:
         file = open(path, mode="r+")
-    except FileExistsError, FileNotFoundError:
+    except FileExistsError as FileNotFoundError:
         return
     else:
         with file as fp:

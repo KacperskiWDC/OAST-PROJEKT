@@ -8,15 +8,14 @@ class Individual:
 
     def __init__(
         self,
-        solutions: Dict[List[int]]
+        solutions: Dict[int, List[int]]  #int jako klucz
     ) -> None:
         self._solutions = solutions
 
     def getSolutions(
         self
-    ) -> List[int]:
+    ) -> Dict[int, List[int]]:           # słownik byla lista
         return self._solutions
-
 def _generateChromosome(
     demand: Demand
 ) -> list[int]:

@@ -7,5 +7,5 @@
         "seed":         13,
         "epochs_num":   10000
     },
-    "problem_type": "DAP"
+    "problem_type": "DDAP"
 }
