@@ -1,8 +1,8 @@
 import  random
 
-from    typing           import List, Dict
+from    typing          import List, Dict
 
-from    graph.demand import Demand
+from    graph.demand    import Demand
 
 class Individual:
 

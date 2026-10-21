@@ -33,6 +33,9 @@ def main() -> None:
     demands                = openLinkDemands(path=problemTypePath)
     demandPathLink         = loadDemandPaths(path=problemTypePath)
 
+    for i, demand in demandPathLink.items():
+        print(repr(demand))
+
     solver(
         algParams=algParams,
         links=links,

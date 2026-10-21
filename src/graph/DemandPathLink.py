@@ -27,7 +27,6 @@ class DemandPath:
             '''
         )
         return ""
-        pass
 
 
 def loadDemandPaths(
