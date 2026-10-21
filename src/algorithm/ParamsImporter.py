@@ -8,7 +8,7 @@ class ParamsImporter:
     def __init__(
         self,
         population:  int=100,
-        chromosomes: int=20,
+        crossovers:  int=20,
         pc:          float=0.1,
         pm:          float=0.1,
         seed:        int=13,
@@ -16,7 +16,7 @@ class ParamsImporter:
     ) -> None:
 
         self._population    = population
-        self._chromosomes   = chromosomes
+        self._crossovers    = crossovers
         self._pc            = pc
         self._pm            = pm
         self._seed          = seed
@@ -27,10 +27,10 @@ class ParamsImporter:
     ) -> int:
         return self._population
 
-    def getChromosomesNum(
+    def getCrossovers(
         self
     ) -> int:
-        return self._chromosomes
+        return self._crossovers
 
     def getCrossoverProbabilty(
         self
@@ -83,7 +83,7 @@ def importAlgParams(
             content = params["alg_params"]
             paramImporter = ParamsImporter(
                 population=content["population"],
-                chromosomes=content["N"],
+                crossovers=content["N"],
                 pc=content["pc"],
                 pm=content["pm"],
                 seed=content["seed"],
