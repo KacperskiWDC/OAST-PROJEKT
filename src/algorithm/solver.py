@@ -1,191 +1,310 @@
+import csv
 import random
-import math
-import numpy as np
+from pathlib import Path
 from copy import deepcopy
 from collections import defaultdict
-from typing import List, Dict
+from bisect import bisect_right
+from typing import Dict
 
 from graph.demand import Demand
-from graph.DemandPathLink import DemandPath
 from graph.link import Links
-
 from solution.individual import Individual, generateIndividual
 from algorithm.ParamsImporter import ParamsImporter
 
 
 def _evaluate(
-        individual: Individual,
-        demandPathLink: Dict,
-        links: Links,
-        problem_type: str
+    individual: Individual,
+    demandPathLink: Dict,
+    links: Links,
+    problem_type: str
 ) -> int:
-    gens = individual.getSolutions()
     link_loads = defaultdict(int)
 
-    # 1. Obliczanie całkowitego ruchu na każdym łączu
-    for demand_id, chromosome in gens.items():
-        for path_id, flow in enumerate(chromosome, start=1):
-            if flow > 0:  # tylko gdy ruch
-                demandPath = demandPathLink[demand_id][path_id]
-                for link_id in demandPath.links:
+    # Sumowanie ruchu przechodzącego przez każde łącze.
+    for demand_id, gene in individual.getSolutions().items():
+        for path_id, flow in enumerate(gene, start=1):
+            if flow > 0:
+                path = demandPathLink[demand_id][path_id]
+
+                for link_id in path.links:
                     link_loads[link_id] += flow
 
-    # 2. Obliczanie funkcji celu
     if problem_type == "DAP":
-        max_overload = -float('inf')
-        for link_id, link_obj in links.getLink().items():
-            # W DAP link_obj.value to liczba modułów (moduleCount)
-            capacity = link_obj.value * links.moduleCapacity
-            overload = link_loads[link_id] - capacity
-            if overload > max_overload:
-                max_overload = overload
-        return max_overload
+        # Maksymalne przeciążenie, także gdy jest ujemne.
+        return max(
+            link_loads[link_id] - link.value * links.moduleCapacity
+            for link_id, link in links.getLink().items()
+        )
 
-    elif problem_type == "DDAP":
+    if problem_type == "DDAP":
         total_cost = 0
-        for link_id, link_obj in links.getLink().items():
-            # W DDAP link_obj.value to koszt jednego modułu (moduleCost)
-            modules_needed = math.ceil(link_loads[link_id] / links.moduleCapacity)
-            total_cost += modules_needed * link_obj.value
+        module_capacity = links.moduleCapacity
+
+        for link_id, link in links.getLink().items():
+            load = link_loads[link_id]
+
+            # Dzielenie całkowite z zaokrągleniem w górę.
+            modules_needed = (
+                load + module_capacity - 1
+            ) // module_capacity
+
+            total_cost += modules_needed * link.value
+
         return total_cost
 
-    return 0
-
-
-def _tournament(
-        scores: list,
-        k: int = 3
-):
-    contestants = random.sample(scores, k)
-    contestants.sort(key=lambda x: x[0])
-    return contestants[0][1]
+    raise ValueError("Nieznany typ problemu: " + problem_type)
 
 
 def _crossover(
-        parent1: Individual,
-        parent2: Individual
+    parent1: Individual,
+    parent2: Individual
 ):
-    g1 = parent1.getSolutions()
-    g2 = parent2.getSolutions()
+    genes1 = parent1.getSolutions()
+    genes2 = parent2.getSolutions()
 
     child1_genes = {}
     child2_genes = {}
 
-    for demand_id in g1:
+    # Gen to cały przydział ruchu jednego zapotrzebowania.
+    for demand_id in genes1:
         if random.random() < 0.5:
-            child1_genes[demand_id] = deepcopy(g1[demand_id])
-            child2_genes[demand_id] = deepcopy(g2[demand_id])
+            child1_genes[demand_id] = deepcopy(genes1[demand_id])
+            child2_genes[demand_id] = deepcopy(genes2[demand_id])
         else:
-            child1_genes[demand_id] = deepcopy(g2[demand_id])
-            child2_genes[demand_id] = deepcopy(g1[demand_id])
+            child1_genes[demand_id] = deepcopy(genes2[demand_id])
+            child2_genes[demand_id] = deepcopy(genes1[demand_id])
 
     return Individual(child1_genes), Individual(child2_genes)
 
 
 def _mutate(
-        individual: Individual,
-        demands: Dict[int, Demand]
-):
-    genes = individual.getSolutions()
-
-    # 1. Losowanie mutacji
-    demand_id = random.choice(list(genes.keys()))
-    chromosome = genes[demand_id]
-
-    # 2. Ścieżki z ruchem
-    active_paths = [i for i, flow in enumerate(chromosome) if flow > 0]
-
-    if not active_paths:
+    individual: Individual,
+    p: float,
+    q: float
+) -> None:
+    # Pierwszy poziom: czy mutujemy tego osobnika?
+    if random.random() >= p:
         return
 
-    # 3. Losujemy ścieżke z której zabieramy ruch
-    path_from = random.choice(active_paths)
+    # Drugi poziom: osobne losowanie dla każdego genu.
+    for gene in individual.getSolutions().values():
+        if random.random() >= q:
+            continue
 
-    # 4. Losujemy ścieżkę do której dodajemy ruch
-    max_paths = len(chromosome)
-    available_targets = [i for i in range(max_paths) if i != path_from]
+        if len(gene) < 2:
+            continue
 
-    if not available_targets:
-        return
+        active_paths = [
+            i for i, flow in enumerate(gene)
+            if flow > 0
+        ]
 
-    path_to = random.choice(available_targets)
+        if not active_paths:
+            continue
 
-    # 5. mutant
-    chromosome[path_from] -= 1
-    chromosome[path_to] += 1
+        path_from = random.choice(active_paths)
 
+        available_targets = [
+            i for i in range(len(gene))
+            if i != path_from
+        ]
+
+        path_to = random.choice(available_targets)
+
+        # Przenosimy jedną jednostkę, zachowując sumę ruchu.
+        gene[path_from] -= 1
+        gene[path_to] += 1
+
+
+def _insert_sorted(
+    population: list,
+    individual: Individual,
+    evaluate
+) -> None:
+    # Wstawienie osobnika z zachowaniem kolejności ocen.
+    score = evaluate(individual)
+    scores = [evaluate(item) for item in population]
+    position = bisect_right(scores, score)
+    population.insert(position, individual)
+
+def _print_result(
+    individual: Individual,
+    demandPathLink: Dict,
+    links: Links,
+    problem_type: str
+) -> None:
+    link_loads = defaultdict(int)
+
+    print("\n--- PRZEPLYWY SCIEZKOWE ---")
+
+    for demand_id, gene in individual.getSolutions().items():
+        print(f"Zapotrzebowanie {demand_id}:")
+
+        for path_id, flow in enumerate(gene, start=1):
+            path = demandPathLink[demand_id][path_id]
+
+            print(
+                f"  Sciezka {path_id}: "
+                f"przeplyw={flow}, lacza={path.links}"
+            )
+
+            for link_id in path.links:
+                link_loads[link_id] += flow
+
+    print("\n--- OBCIAZENIA LACZY ---")
+
+    for link_id, link in links.getLink().items():
+        load = link_loads[link_id]
+
+        if problem_type == "DAP":
+            capacity = link.value * links.moduleCapacity
+            overload = load - capacity
+
+            print(
+                f"Lacze {link_id}: "
+                f"obciazenie={load}, "
+                f"pojemnosc={capacity}, "
+                f"przeciazenie={overload}"
+            )
+
+        elif problem_type == "DDAP":
+            modules = (
+                load + links.moduleCapacity - 1
+            ) // links.moduleCapacity
+
+            capacity = modules * links.moduleCapacity
+            cost = modules * link.value
+
+            print(
+                f"Lacze {link_id}: "
+                f"obciazenie={load}, "
+                f"moduly={modules}, "
+                f"pojemnosc={capacity}, "
+                f"koszt={cost}"
+            )
+
+    objective = _evaluate(
+        individual,
+        demandPathLink,
+        links,
+        problem_type
+    )
+
+    print(f"\nWartosc funkcji celu ({problem_type}): {objective}")
+
+def _save_trajectory(trajectory, problem_type: str) -> None:
+    project_dir = Path(__file__).resolve().parents[2]
+    results_dir = project_dir / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = results_dir / f"{problem_type.lower()}_trajectory.csv"
+
+    with output_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["generation", "best_objective"])
+        writer.writerows(trajectory)
+
+    print(f"\nZapisano przebieg do: {output_path}")
 
 def solver(
-        algParams: ParamsImporter,
-        links: Links,
-        demands: Dict[int, Demand],
-        demandPathLink: Dict,
-        problemType: str
+    algParams: ParamsImporter,
+    links: Links,
+    demands: Dict[int, Demand],
+    demandPathLink: Dict,
+    problemType: str
 ) -> Individual:
     population_size = algParams.getPopulationSize()
     epochs = algParams.getEpochsNum()
     crossovers = algParams.getCrossovers()
-    q = algParams.getMutationProbabilty()
-    p = algParams.getCrossoverProbabilty()
 
+    p = algParams.getIndividualMutationProbability()
+    q = algParams.getGeneMutationProbability()
 
+    if population_size < 1:
+        raise ValueError("Populacja musi zawierać co najmniej 1 osobnika.")
+
+    if crossovers < 0 or epochs < 0:
+        raise ValueError("Liczba krzyżowań i generacji nie może być ujemna.")
+
+    if not (0 <= p <= 1 and 0 <= q <= 1):
+        raise ValueError("Prawdopodobieństwa p i q muszą należeć do [0, 1].")
+
+    if problemType not in ("DAP", "DDAP"):
+        raise ValueError("Typ problemu musi być DAP albo DDAP.")
+
+    if not links.getLink() or links.moduleCapacity <= 0:
+        raise ValueError("Sieć musi mieć łącza i dodatnią pojemność modułu.")
+
+    random.seed(algParams.getSeed())
+
+    def evaluate(individual: Individual) -> int:
+        return _evaluate(
+            individual,
+            demandPathLink,
+            links,
+            problemType
+        )
+
+    # Populacja początkowa jest uporządkowana.
     P = []
+
     for _ in range(population_size):
-        individual = generateIndividual(demands=demands)
-        P.append(individual)
+        individual = generateIndividual(demands)
+        _insert_sorted(P, individual, evaluate)
 
-    best = None
-    best_score = float('inf')
+    trajectory = [(0, evaluate(P[0]))]
 
-    for epoch_num in range(epochs):
+    print(
+        f"Generacja 0 | Najlepszy wynik ({problemType}): "
+        f"{evaluate(P[0])}"
+    )
+
+    for generation in range(1, epochs + 1):
         O = []
 
-        # krzyżowanie
+        # Dokładnie K krzyżowań daje dokładnie 2K potomków.
         for _ in range(crossovers):
             parent1 = random.choice(P)
             parent2 = random.choice(P)
 
-            # krzyżowanie odbywa się z prawdopodobieństwem p
-            if random.random() < p:
-                child1, child2 = _crossover(parent1, parent2)
-                O.append(child1)
-                O.append(child2)
+            child1, child2 = _crossover(parent1, parent2)
 
-        # mutacja na potomkach
-        for individual in O:
-            if random.random() < q:
-                _mutate(individual, demands)
+            _insert_sorted(O, child1, evaluate)
+            _insert_sorted(O, child2, evaluate)
 
-        candidates = []
+        # Kopia listy pozwala odwiedzić każdego potomka raz,
+        # mimo zmiany kolejności elementów w O.
+        for individual in list(O):
+            O.remove(individual)
 
-        # Ocena całej puli
-        for individual in P + O:
-            score = _evaluate(
-                individual,
-                demandPathLink,
-                links,
-                problemType
-            )
+            _mutate(individual, p, q)
 
-            candidates.append((score, individual))
+            # Po mutacji ocena może się zmienić.
+            _insert_sorted(O, individual, evaluate)
 
-            if score < best_score:
-                best_score = score
-                best = individual
+        # Wybieramy N najlepszych spośród rodziców i potomków.
+        candidates = sorted(P + O, key=evaluate)
+        P = candidates[:population_size]
 
-        # Selekcja najlepszych N osobników
-        candidates.sort(key=lambda x: x[0])
+        trajectory.append((generation, evaluate(P[0])))
 
-        P = [
-            individual
-            for _, individual
-            in candidates[:population_size]
-        ]
+        print(
+            f"Generacja {generation} | "
+            f"Najlepszy wynik ({problemType}): {evaluate(P[0])}"
+        )
 
-        if epoch_num % 10 == 0:
-            print(f"Epoka {epoch_num:4d} | Najlepszy wynik ({problemType}): {best_score}")
+    best = P[0]
 
-    print(f"\n--- KONIEC ---")
-    print(f"Ostateczny najlepszy wynik: {best_score}")
+    print("\n--- KONIEC ---")
+    print(f"Ostateczny najlepszy wynik: {evaluate(best)}")
+
+    _print_result(
+        best,
+        demandPathLink,
+        links,
+        problemType
+    )
+
+    _save_trajectory(trajectory, problemType)
 
     return best
